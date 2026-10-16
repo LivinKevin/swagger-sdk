@@ -28,6 +28,15 @@ component name="OpenAPIParser" accessors="true" {
 			XPath = "";
 		}
 
+		// BL-2190: resolve app-relative or mapped paths (e.g. /resources/api/x.yml) to a real
+		// file system path, so Java classes like java.io.File see the same file fileExists() does
+		if ( left( DocPath, 4 ) != "http" && !createObject( "java", "java.io.File" ).init( DocPath ).exists() ) {
+			var expandedPath = expandPath( DocPath );
+			if ( fileExists( expandedPath ) ) {
+				DocPath = expandedPath;
+			}
+		}
+		
 		if ( left( DocPath, 4 ) != "http" && !fileExists( DocPath ) ) {
 			throw(
 				type    = "SwaggerSDK.ParserException",
@@ -52,7 +61,10 @@ component name="OpenAPIParser" accessors="true" {
 				break;
 			case "yaml":
 			case "yml":
-				if ( server.keyExists( "boxlang" ) ) {
+
+			    // BL-2190: use bx-yaml when installed; otherwise fall back to SnakeYAML,
+				// which is safe now that DocPath is a real file system path
+				if ( server.keyExists( "boxlang" ) && getFunctionList().keyExists( "yamlDeserialize" ) ) {
 					documentContent = yamlDeserialize( fileRead( DocPath ) );
 				} else {
 					var YAMLLoader  = jLoader.create( "org.yaml.snakeyaml.Yaml" );
@@ -298,24 +310,29 @@ component name="OpenAPIParser" accessors="true" {
 			}
 		}
 
+		// BL-2190: only use the base document's folder when this parser was loaded from a file.
+		// Without one, getDirectoryFromPath() returns "/" and builds paths like "//resources/..."
+		var baseDirectory = ( isNull( getBaseDocumentPath() ) || !len( getBaseDocumentPath() ) )
+			? ""
+			: getDirectoryFromPath( getBaseDocumentPath() );
 		var ReferenceDocument = {};
 
 		try {
 			// Files receive a parser reference
 			if ( left( FilePath, 4 ) == "http" ) {
 				ReferenceDocument = Wirebox.getInstance( "OpenAPIParser@SwaggerSDK" ).init( $ref );
-			} else if ( len( FilePath ) && fileExists( getDirectoryFromPath( getBaseDocumentPath() ) & FilePath ) ) {
+			} else if ( len( FilePath ) && fileExists( baseDirectory & FilePath ) ) {
 				ReferenceDocument = Wirebox
 					.getInstance( "OpenAPIParser@SwaggerSDK" )
-					.init( getDirectoryFromPath( getBaseDocumentPath() ) & $ref );
+					.init( baseDirectory & $ref );
 			} else if ( len( FilePath ) && fileExists( expandPath( FilePath ) ) ) {
 				ReferenceDocument = Wirebox
 					.getInstance( "OpenAPIParser@SwaggerSDK" )
 					.init( expandPath( FilePath ) & ( !isNull( xPath ) ? "##" & xPath : "" ) );
-			} else if ( len( FilePath ) && !fileExists( getDirectoryFromPath( getBaseDocumentPath() ) & FilePath ) ) {
+			} else if ( len( FilePath ) && !fileExists( baseDirectory & FilePath ) ) {
 				throw(
 					type    = "SwaggerSDK.ParserException",
-					message = "File #( getDirectoryFromPath( getBaseDocumentPath() ) & FilePath )# does not exist"
+					message = "File #( baseDirectory & FilePath )# does not exist"
 				);
 			} else if ( !isNull( XPath ) && len( XPath ) ) {
 				ReferenceDocument = getInternalXPath( XPath );

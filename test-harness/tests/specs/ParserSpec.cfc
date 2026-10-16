@@ -17,6 +17,27 @@ component extends="tests.resources.BaseOpenAPISpec" {
 				runParserTypeChecks( YAMLParser );
 				runParserRecursionTests( YAMLParser );
 			} );
+
+			it( "Resolves app-relative file paths to real file system paths (BL-2190)", function(){
+				var Parser = getInstance( "OpenAPIParser@SwaggerSDK" ).init( "/tests/resources/petstore/petstore.yaml" );
+				runParserTypeChecks( Parser );
+				// Java file APIs must be able to open the stored path, not just CFML's fileExists()
+				expect( createObject( "java", "java.io.File" ).init( Parser.getBaseDocumentPath() ).exists() ).toBeTrue(
+					"Base document path [#Parser.getBaseDocumentPath()#] is not a real file system path"
+				);
+			} );
+
+			it( "Resolves an app-relative $ref when parsing a struct with no base document (BL-2190)", function(){
+				var Parser = getInstance( "OpenAPIParser@SwaggerSDK" ).parse( {
+					"openapi"    : "3.0.0",
+					"info"       : { "title" : "BL-2190", "version" : "1.0.0" },
+					"paths"      : {},
+					"components" : { "x-petstore" : { "$ref" : "/tests/resources/petstore/petstore.yaml" } }
+				} );
+				var NormalizedDocument = Parser.getNormalizedDocument();
+				expect( NormalizedDocument.components[ "x-petstore" ] ).toBeStruct();
+				expect( NormalizedDocument.components[ "x-petstore" ] ).toHaveKey( "paths" );
+			} );
 		} );
 	}
 

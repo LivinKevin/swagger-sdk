@@ -52,14 +52,11 @@ component name="OpenAPIParser" accessors="true" {
 				break;
 			case "yaml":
 			case "yml":
-				if ( server.keyExists( "boxlang" ) ) {
-					documentContent = yamlDeserialize( fileRead( DocPath ) );
+				var yamlText = fileRead( DocPath ); // BoxLang/CF path resolution, no raw Java path
+				if ( server.keyExists( "boxlang" ) && getFunctionList().keyExists( "yamlDeserialize" ) ) {
+					documentContent = yamlDeserialize( yamlText );
 				} else {
-					var YAMLLoader  = jLoader.create( "org.yaml.snakeyaml.Yaml" );
-					var IOFile      = jLoader.create( "java.io.File" ).init( DocPath );
-					var InputStream = jLoader.create( "java.io.FileInputStream" ).init( IOFile );
-
-					documentContent = getUtils().toCF( YAMLLoader.load( InputStream ) );
+					documentContent = getUtils().toCF( jLoader.create( "org.yaml.snakeyaml.Yaml" ).load( yamlText ) );
 				}
 				break;
 			case "json":
